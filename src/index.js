@@ -1,49 +1,110 @@
-import './css/styles.css';
-import debounce from 'lodash.debounce';
+import axios from 'axios';
+import Notiflix from 'notiflix';
+const refs = {
+  searchForm: document.querySelector('.search-form'),
+  formInput: document.querySelector('.form-input'),
+  formSubmit: document.querySelector('.form-btn'),
+  pageGallery: document.querySelector('.gallery'),
+  buttonLoadMore: document.querySelector('.load-more'),
+};
 
-import { fetchCountries } from './js/fetchlist';
+refs.searchForm.addEventListener('submit', onFormSearchClick);
+refs.buttonLoadMore.addEventListener('click', onLoadMoreClick);
+let name;
+let page;
+const perPage = 40;
+function onFormSearchClick(e) {
+  e.preventDefault();
+  refs.buttonLoadMore.style.display = 'none';
+  refs.pageGallery.innerHTML = '';
+  page = 1;
+  name = e.target.elements.searchQuery.value.trim();
 
-const DEBOUNCE_DELAY = 300;
-const inputValue = document.querySelector('#search-box');
-const countryList = document.querySelector('.country-list');
-const countryInfo = document.querySelector('.country-info');
-inputValue.addEventListener('input', debounce(valueInInput, DEBOUNCE_DELAY));
+  getImages(name, page).then(imagesItem => {
+    if (imagesItem?.data?.total === 0) {
+      Notiflix.Notify.failure(
+        'Sorry, there are no images matching your search query. Please try again.'
+      );
+      refs.buttonLoadMore.style.display = 'none';
+      e.target.reset();
+      return;
+    } else if (imagesItem && imagesItem.data.hits.length > 0) {
+      const newImages = imagesItem?.data?.hits;
 
-function valueInInput(e) {
-  let countryName = e.target.value.trim();
-  const newFetch = fetchCountries(countryName);
-  countryInfo.innerHTML = '';
-  countryList.innerHTML = '';
-
-  if (countryName)
-    newFetch.then(data => {
-      if (data.length >= 2 && data.length <= 10) renderCountryList(data);
-      if (data.length === 1) renderCountryInfo(data);
-    });
+      refs.buttonLoadMore.style.display = 'block';
+      renderMarkup(newImages);
+      e.target.reset();
+    } else {
+      refs.buttonLoadMore.display = 'none';
+      e.target.reset();
+      return;
+    }
+  });
 }
 
-function renderCountryList(data) {
-  const newCountryList = data.reduce((acc, element) => {
-    acc += `<li><img src="${element.flags.svg}" alt="" width="30"><span> ${element.name}</span></li>`;
-    return acc;
-  }, '');
-  countryList.insertAdjacentHTML('beforeend', newCountryList);
-}
-
-function renderCountryInfo(data) {
-  countryList.innerHTML = '';
-  const newCountryInfo = data
+function renderMarkup(arr) {
+  const galleryList = arr
     .map(
-      element =>
-        `<img src="${element.flags.svg}" alt="flag" width="30"><span> <b>${
-          element.name
-        }</b></span>
-    <p><b>Capital:</b> ${element.capital}</p><p><b>Population:</b> ${
-          element.population
-        }</p><p><b>Lenguages:</b> ${element.languages.map(
-          element => element.name
-        )}</p>`
+      item => `<div class="photo-card">
+  <img src="${item.webformatURL}" alt="${item.type}" loading="lazy" width="200" height="200"/>
+  <div class="info">
+    <p class="info-item">
+      <b>Likes: ${item.likes}</b>
+    </p>
+    <p class="info-item">
+      <b>Views: ${item.views}</b>
+    </p>
+    <p class="info-item">
+      <b>Comments: ${item.comments}</b>
+    </p>
+    <p class="info-item">
+      <b>Downloads: ${item.downloads}</b>
+    </p>
+  </div>
+</div>`
     )
     .join();
-  countryInfo.innerHTML = newCountryInfo;
+  return refs.pageGallery.insertAdjacentHTML('beforeend', galleryList);
+}
+
+async function getImages(name, page = 1) {
+  const BASE_URL = 'https://pixabay.com/api/';
+  const key = 'key=29896851-043ea774f51ffcbeeabff044d';
+
+  const params = 'image_type=photo&orientation=horizontal';
+  try {
+    if (!name) {
+      Notiflix.Notify.failure(
+        'Sorry, there are no images matching your search query. Please try again.'
+      );
+      return;
+    } else {
+      return await axios.get(
+        `${BASE_URL}?${key}&q=${name}&page=${page}&per_page=${perPage}&${params}`
+      );
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function onLoadMoreClick(e) {
+  page += 1;
+  refs.buttonLoadMore.style.display = 'none';
+  try {
+    const imagesItem = await getImages(name, page);
+    const newImages = imagesItem.data.hits;
+    const totalHits = imagesItem.data.totalHits;
+
+    renderMarkup(newImages);
+    refs.buttonLoadMore.style.display = 'block';
+    if (page * perPage > totalHits) {
+      throw new Error(
+        "We're sorry, but you've reached the end of search results."
+      );
+    }
+  } catch (error) {
+    Notiflix.Notify.failure(error.message);
+    refs.buttonLoadMore.style.display = 'none';
+  }
 }
